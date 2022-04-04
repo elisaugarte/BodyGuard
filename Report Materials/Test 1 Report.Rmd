@@ -1,0 +1,148 @@
+---
+title: "Test 1 Report Comparing Firstbeat Bodyguard with Mindware data"
+author: "Elisa Ugarte"
+date: "4/4/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(ggplot2)
+library(report)
+library(dplyr)
+library(tidyr)
+library(lessR)
+library(splitstackshape)
+library(psych)
+library(correlation)
+library(readxl)
+#devtools::install_github("rempsyc/rempsyc")
+library(rempsyc)
+
+
+
+theme_ins2 <-
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, hjust = .5),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.title = element_text(size = 12), 
+    legend.text = element_text(size = 10),
+    legend.position = "bottom",
+    #panel.background = element_rect(fill = "white")
+  )
+
+cbbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#AE1A1A",
+                "#E37721", "#159DF0","#000000")
+
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+
+
+#setwd("C:\\Firstbeat Files\\Tester Elisa\\Data Exports\\output data\\2_23_2022")
+#dir()
+setwd("~/Box/FirstBeat Bodyguard2/Testing/Elisa/Data Exports/output data/2_23_2022")
+#
+d <- read_xlsx("bodyguard_output2.xlsx") #Change to the name of file
+head(d)
+
+m <- read_xlsx("bodyguard_mindware_output2.xlsx") #Change to the name of file
+head(m) #
+
+#Delete all segments that have less than 6 seconds
+
+d1 <- d %>% filter(Duration > 14.99)
+m1 <- m %>% filter(Duration > 14.99)
+
+join <- m1 %>% select(ID:Segment, RSAm, RMSSDm, Rm, IBIm)
+
+mindware <- merge(d1, join, by = c("ID", "Task", "Segment"))
+head(mindware)
+mindware <- mindware %>% arrange(Segment)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Test 1
+
+#### It was impossible to align timings precisely.Need to practice this again.
+
+#### I splitted the file into the approx start of baseline and end before MW disconnected
+
+### IBIs
+
+```{r ibis}
+
+t1 <- mindware %>% select(Rr, Rc, Rm, IBIr, IBIc, IBIm) %>% filter(Rm > 10) %>%rename(`# beats BG raw` = Rr, `# beats BG corrected` = Rc, `# beats Mindware` = Rm) %>% report_table() %>% summary()
+nice_table(t1)
+
+t2 <- mindware %>% select(Rr, Rc, Rm, IBIr, IBIc, IBIm) %>% filter(Rm > 10) %>% mutate(devfbrM = abs(IBIr - IBIm), devfbcM = abs(IBIc - IBIm), devfbrMR = abs(Rr-Rm), devfbcMR = abs(Rc - Rm)) %>% select(devfbrM, devfbcM) %>% summarise_each(funs(mean,sd, min, max)) %>% rename(`Avg deviation BG raw` = devfbrM_mean, `Avg deviation BG corrected` = devfbcM_mean, `SD deviation BG raw` = devfbrM_sd, `SD deviation BG corrected` =   devfbcM_sd, `Min deviation BG raw` = devfbrM_min, `Min BG corrected` = devfbcM_min, `Max deviation BG raw` = devfbrM_max, `Max deviation BG corrected` = devfbcM_max)
+nice_table(t2)
+
+mindware %>% select(Rr, Rc, Rm, IBIr, IBIc, IBIm) %>% filter(Rm > 10) %>% mutate(devfbrM = abs(IBIr - IBIm), devfbcM = abs(IBIc - IBIm), devfbrMR = abs(Rr-Rm), devfbcMR = abs(Rc - Rm)) %>% select(devfbrM, devfbcM) %>% mutate(half = ntile(devfbrM, 2)) %>% arrange(devfbrM)
+
+```
+
+### RSA & RMSSD
+```{r cars}
+
+t3 <- mindware %>% select(RSAr, RSAc, RSAm, RMSSDr, RMSSDc, RMSSDm) %>% filter(!is.na(RSAm)) %>%
+rename(`RSA BG raw` = RSAr, `RSA BG corrected` = RSAc, `RSA Mindware` = RSAm, `RMSSD BG raw` =   RMSSDr, `RMSSD BG corrected` = RMSSDc,`RMSSD Mindware` = RMSSDm )%>% report_table() %>% summary()
+nice_table(t3)
+
+t4 <- mindware %>% select(RSAr, RSAc, RSAm, RMSSDr, RMSSDc, RMSSDm) %>% filter(!is.na(RSAm)) %>% mutate(devRSArM = abs(RSAr - RSAm), devRSAcM = abs(RSAc - RSAm), devRMSSDrM = abs(RMSSDr-RMSSDm), devRMSSDcM = abs(RMSSDc - RMSSDm)) %>% select(devRSArM, devRSAcM,devRMSSDrM,devRMSSDcM) %>% rename(`RSA deviation BG raw` = devRSArM, `RSA deviation BG corrected` = devRSAcM,`RMSSD deviation BG raw` = devRMSSDrM, `RMSSD deviation BG corrected` = devRMSSDcM) %>% report_table() %>% summary()
+nice_table(t4)
+
+g1 <- mindware %>% rename(RSA = RSAr) %>% select(Task, Segment, RSA) %>% mutate(min = row_number()) %>% mutate(type = 1) 
+g2 <- mindware %>% rename(RSA = RSAc) %>% select(Task,Segment, RSA) %>% mutate(min = row_number()) %>% mutate(type = 2)
+g3 <- mindware %>% rename(RSA = RSAm) %>% select(Task,Segment, RSA) %>% mutate(min = row_number()) %>% mutate(type = 3)
+
+g4<- rbind(g1,g2,g3)
+g4 <- g4 %>% filter(!is.na(RSA))
+
+#No differences between condition overall
+ANOVA(RSA ~ type, data = g4)
+
+#But correlation was not very high
+cor <- mindware %>% select(RSAr, RSAc, RSAm)
+corPlot(cor, upper = F, diag = F, zlim = c(-1, 1), stars = T, cex = 1.1, pval=T,  
+       cuts=c(.001,.01), n.legend = 8, scale = T, ylas = 1, xlas = 2, main = "Correlations for RSA",alpha=.75)
+correlation(cor, bayesian = T)
+
+f1 <- g4 %>% mutate(type = as.factor(type)) %>% ggplot(aes(x=min, y=RSA, group=type, color=type)) + geom_line(size=1, 
+            alpha=.95, position = position_jitterdodge(0)) + geom_point(size = 3) +
+ theme_ins2 +
+ ggtitle("Comparing RSA with Mindware and BG2") + labs(subtitle = "Times do not align perfectly, interpret with care") + theme(plot.subtitle = element_text(hjust = 0.5)) + scale_x_continuous(breaks = seq.int(1,35,1)) + scale_color_manual(values = cbbPalette, labels = c("Firstbeat raw IBI\nMindware processed\nmanual edits", "Firstbeat corrected IBI\nMindware processed\nno edits", "Mindware acquired\ndata"))+ scale_y_continuous(labels=scaleFUN, breaks = seq.int(4.25,7.75,0.25))
+
+```
+
+## RMSSD
+
+```{r rmssd, echo = F}
+
+
+g1 <- mindware %>% rename(RMSSD = RMSSDr) %>% select(RMSSD) %>% mutate(min = row_number()) %>% mutate(type = 1) 
+g2 <- mindware %>% rename(RMSSD = RMSSDc) %>% select(RMSSD) %>% mutate(min = row_number()) %>% mutate(type = 2)
+g3 <- mindware %>% rename(RMSSD = RMSSDm) %>% select(RMSSD) %>% mutate(min = row_number()) %>% mutate(type = 3)
+g5<- rbind(g1,g2,g3)
+g5 <- g5 %>% filter(min != 36)
+
+ANOVA(RMSSD ~ type, data = g5)
+
+rmssdcor <- mindware %>% select(RMSSDr, RMSSDc, RMSSDm)
+corPlot(rmssdcor, upper = F, diag = F, zlim = c(-1, 1), stars = T, cex = 1.1, pval=T,  
+       cuts=c(.001,.01), n.legend = 8, scale = T, ylas = 1, xlas = 2, main = "Correlations for RMSSD",alpha=.75)
+correlation(rmssdcor, bayesian = T)
+
+f2 <- g5 %>% mutate(type = as.factor(type)) %>% ggplot(aes(x=min, y=RMSSD, group=type, color=type)) + geom_line(size=1, 
+            alpha=.95, position = position_jitterdodge(0)) + geom_point(size = 3) +
+ theme_ins2 +
+ ggtitle("Comparing RMSSD with Mindware and BG2") + labs(subtitle = "Times do not align perfectly, interpret with care") + theme(plot.subtitle = element_text(hjust = 0.5)) + scale_x_continuous(breaks = seq.int(1,35,1)) + scale_color_manual(values = cbbPalette, labels = c("Firstbeat raw IBI\nMindware processed\nmanual edits", "Firstbeat corrected IBI\nMindware processed\nno edits", "Mindware acquired\ndata", "Firstbeat Software\nOutput"))+ scale_y_continuous(labels=scaleFUN, breaks = seq.int(12,53,5))
+
+library(gridExtra)
+grid.arrange(f1, f2, nrow = 2)
+
+
+```
+
